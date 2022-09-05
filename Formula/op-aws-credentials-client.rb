@@ -4,7 +4,7 @@ class OpAwsCredentialsClient < Formula
   desc "Password client script to fetch AWS credentials from 1Password"
   homepage "https://github.com/claui"
   url "file:///dev/null"
-  version "1.0.3"
+  version "1.1.0"
   sha256 "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
   depends_on "jq"
@@ -36,18 +36,32 @@ class OpAwsCredentialsClient < Formula
       ACCESS_KEY_ID_FIELDNAME="${3?}"
       SECRET_ACCESS_KEY_FIELDNAME="${4?}"
 
-      /usr/local/bin/op get item \\
-        --fields="${ACCESS_KEY_ID_FIELDNAME},${SECRET_ACCESS_KEY_FIELDNAME}" \\
-        --vault="${OP_VAULT}" \\
-        "${OP_ITEM}" \\
-        | #{Formula["jq"].opt_bin/"jq"} "$(/bin/cat << EOF
-          {
-            Version: 1,
-            AccessKeyId: ."${ACCESS_KEY_ID_FIELDNAME}",
-            SecretAccessKey: ."${SECRET_ACCESS_KEY_FIELDNAME}",
-          }
-      EOF
-          )"
+      if [ "$(op --version | cut -d . -f 1)" -le '1' ]; then
+        # 1Password CLI v1
+        op get item --cache \
+          --fields "${ACCESS_KEY_ID_FIELDNAME},${SECRET_ACCESS_KEY_FIELDNAME}" \
+          --vault "${OP_VAULT}" \
+          "${OP_ITEM}" \
+          | jq '
+            {
+              Version: 1,
+              AccessKeyId: ."${ACCESS_KEY_ID_FIELDNAME}",
+              SecretAccessKey: ."${SECRET_ACCESS_KEY_FIELDNAME}",
+            }'
+      else
+        # 1Password CLI v2 or newer
+        op item get --cache \
+          --fields "label=${ACCESS_KEY_ID_FIELDNAME},label=${SECRET_ACCESS_KEY_FIELDNAME}" \
+          --format 'json' \
+          --vault "${OP_VAULT}" \
+          "${OP_ITEM}" \
+          | jq '
+            {
+              Version: 1,
+              AccessKeyId: .[0].value,
+              SecretAccessKey: .[1].value
+            }'
+      fi
     EOS
   end
 
